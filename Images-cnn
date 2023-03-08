@@ -1,0 +1,88 @@
+import os
+from keras.preprocessing.image import ImageDataGenerator
+from tensorflow.python.keras.optimizers import adam_v2
+from tensorflow.python.keras.models import Sequential
+from tensorflow.python.keras.layers import Dropout, Flatten, Dense, Activation
+from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D
+
+# Create the data train and test
+
+data_train = r"C:\Users\Sergi\Desktop\data\train"
+data_test = r"C:\Users\Sergi\Desktop\data\test"
+
+# Red parameters
+
+epochs = 10 # Times the algorithm will be traversed completely
+altura, longitud = 100, 100 # We indicate what I want the size of the image to be in pixels
+batch_size = 32  # We are going to pass the images to the model in groups of 32 in this case
+stride = 1000 # Is the number of times the data will be processed in each epoch
+stride_validacion = 200 # At the end of each epoch we will see how well you are learning
+filtrosConv1 = 32 # Number of depth that our image will have after each convolution
+filtrosConv2 = 64
+filter_size1 = (3,3) # Filter size in pixels
+filter_size2 = (2,2)
+pooling_size = (2,2) # Filter size in max pooling
+clases = 2 # Clases que vamos a analizar en este caso 2 (gatos y perros)
+lr = 0.0005 # Learning rate is equal to the correction that the algorithm will gradually make
+optimizer = adam_v2.Adam(learning_rate=lr)
+
+# Image preprocessing
+
+entrenamiento_datagen = ImageDataGenerator(
+    rescale=1./255, # We scale the pixels from 0 to 255 to 0 to 1
+    shear_range = 0.3, # Skew some images so they don't just look for horizontal or vertical X
+    zoom_range = 0.3, # It will zoom in on some so that it doesn't always detect X the same
+    horizontal_flip = True, # Will switch from vertical to horizontal so it can detect various positions
+
+)
+
+validacion_datagen = ImageDataGenerator(
+    rescale=1./255
+)
+
+imagen_entrenamiento = entrenamiento_datagen.flow_from_directory(
+    data_train,
+    target_size=(altura, longitud),
+    batch_size=batch_size,
+    class_mode="categorical"
+    
+   # It will go to the route that we gave it where we have the images
+)
+
+
+imagen_validacion = validacion_datagen.flow_from_directory(
+    data_test,
+    target_size=(altura, longitud),
+    batch_size=batch_size,
+    class_mode="categorical"
+)
+
+
+
+# Create the CNN
+
+cnn=Sequential() # Here we indicate that it is sequential and therefore it goes one layer after another
+
+# First convolutional layer
+cnn.add(Convolution2D(filtrosConv1, filter_size1, padding="same", input_shape=(altura, longitud, 3), activation="relu"))
+
+# The relu activation function will eliminate the negative values ​​and leave the positive ones as they enter
+
+cnn.add(MaxPooling2D(pool_size=pooling_size))
+
+cnn.add(Convolution2D(filtrosConv2, filter_size2, padding="same", activation="relu")) # El input shape solo es en la primera capa
+cnn.add(MaxPooling2D(pool_size=pooling_size))
+
+cnn.add(Flatten()) # In this layer, what we will do is convert the information of all the others into a single dimension
+cnn.add(Dense(256, activation="relu")) # After flattening the image we create a layer with 256 neurons and connect it with Flatten
+cnn.add(Dropout(0.5))  # We will avoid overfitting by randomly deactivating 50% of the neurons of the previous layer
+cnn.add(Dense(clases, activation="softmax")) # softmax converts the model estimate to probability
+
+# In the last Dense layer we will give it the class parameter since it is sequential and we only have two (dog or cat)
+
+cnn.compile(loss="categorical_crossentropy", optimizer=optimizer, metrics=["accuracy"])
+
+# Here we give parameters so that it fits better
+
+
+cnn.fit(imagen_entrenamiento, steps_per_epoch=stride, epochs=epochs, validation_data=imagen_validacion, validation_steps=stride_validacion)
