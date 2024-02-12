@@ -2,3 +2,755 @@
 
 ## We tried to create different models to predict if a person survived or not in the accident
 
+#%%
+
+# Import the libraries and import the dataset
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import joblib
+from sklearn.model_selection import train_test_split as tts
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+#%%
+
+df = pd.read_csv('Titanic-Dataset.csv')
+df.head()
+
+#%%
+
+# First of everything we need to check if we have empty or null values:
+
+df.isnull().sum()
+
+#%%
+
+# To fix that one of the options we have is to visualice the mode/median in that
+# in that variable
+
+df['Age'].describe()
+
+plt.figure(figsize=(12,6))
+plt.hist(df['Age'])
+plt.xlabel('Different ages')
+plt.ylabel('Amount of guests')
+
+#%%
+
+'''
+The age between the 20 and 30 its the most repeated value, 
+now we change the empty values to the median
+
+'''
+
+df.isna().sum().plot(kind='bar')
+plt.show()
+
+#%%
+
+df['Age'].median()
+df['Age'] = df['Age'].fillna(value=28.0)
+
+#%%
+
+df['Age'].isna().sum()
+
+#%%
+
+df['Cabin'].value_counts(dropna=False)
+
+df.drop('Cabin', inplace=True, axis=1)
+
+df['Embarked'] = df['Embarked'].fillna('S')
+
+df.isna().sum().sort_values(ascending=False)
+
+#%%
+
+'''
+Now we need to handling Categorigal Features
+'''
+
+Sex = pd.get_dummies(df['Sex'], drop_first=True)
+
+Embarked = pd.get_dummies(df['Embarked'], drop_first=True)
+
+df.drop(['Sex', 'Embarked', 'Name', 'Ticket'], axis=1, inplace=True)
+
+df = pd.concat([df, Sex, Embarked], axis=1)
+
+df.head()
+
+
+#%%
+
+'''
+Step 2: After we clean the dataset its time to visualize the Dataset
+'''
+
+sns.countplot(x='Survived', data=df)
+
+df.head()
+
+sns.countplot(x='Survived', data=df, hue='male')
+
+sns.countplot(x='Survived', data=df, hue='Pclass')
+
+df['Age'].hist(bins=15)
+
+
+#%%
+
+'''
+Step 3: Preprocessing the data
+'''
+
+from sklearn.preprocessing import LabelEncoder
+
+le = LabelEncoder()
+
+df['male'] = le.fit_transform(df['male'])
+df['Q'] = le.fit_transform(df['Q'])
+df['S'] = le.fit_transform(df['S'])
+
+#%%
+
+'''
+Here we reshape after using MinMaxScaler to create just one a column
+'''
+
+from sklearn.preprocessing import MinMaxScaler
+
+mms = MinMaxScaler()
+
+df['Fare'] = mms.fit_transform(df['Fare'].values.reshape(-1, 1))
+
+#%%
+
+'''
+Step 4: Time to create the models and classify which one is better
+'''
+
+# We need to drop the columns we want to predict
+# Separate the features in train and test to split the models
+
+X = df.drop(['Survived', 'PassengerId'], axis=1)
+y = df['Survived']
+
+X_train, X_test, y_train, y_test = tts(X,
+                                       y,
+                                       test_size=0.2,
+                                       random_state=117)
+
+
+# Check the shapes with the variables create
+
+X_train.shape, X_test.shape, y_train.shape, y_test.shape
+
+#%%
+
+'''
+SVM/SVC (Support Vector Machines)
+'''
+
+
+from sklearn.svm import SVC
+# Create a GridSearchCV to calculate the best params to find the params
+
+param_grid_svc = {'C': [0.1, 1, 15], 'kernel': ['linear', 'rbf']}
+grid_search_svc = GridSearchCV(SVC(), param_grid_svc, cv=3)
+grid_search_svc.fit(X_train, y_train)
+
+# Check the best params
+
+best_params_svc = grid_search_svc.best_params_
+
+# Check the best estimator
+
+best_model = grid_search_svc.best_estimator_
+
+print('Best Params:', best_params_svc)
+
+print('Best Model:', best_model)
+
+#%%
+
+# Now add the params to the model
+
+best_params_svc = {'C': 15, 'kernel': 'rbf', 'gamma': 0.1}
+
+svc_classifier = SVC(probability=True, **best_params_svc)
+
+svc_classifier.fit(X_train, y_train)
+
+y_pred_svc = svc_classifier.predict(X_test)
+
+accuracy_svc = accuracy_score(y_test, y_pred_svc)
+
+print(f'The accuracy with the best params: {accuracy_svc:.2f}')
+
+# Confusion Matrix
+
+print('Confusion Matrix')
+print(confusion_matrix(y_test, y_pred_svc))
+
+# Report
+
+print('Report')
+print(classification_report(y_test, y_pred_svc))
+
+# Now we save the model trained
+
+joblib.dump(svc_classifier, 'svc_model.joblib')
+svc_model = joblib.load('svc_model.joblib')
+#%%
+
+'''
+Decision Tree Classifier
+'''
+
+# The first step is always find the best params for the model
+
+from sklearn.tree import DecisionTreeClassifier
+
+param_grid_tc = {
+    'criterion': ['gini', 'entropy'],
+    'max_depth': [None, 10, 20, 30],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2 ,4],
+    'max_features' : ['auto', 'sqrt', 'log2', None]
+}
+
+tree_classifier = DecisionTreeClassifier(random_state=117)
+
+grid_search_tc = GridSearchCV(tree_classifier, param_grid_tc, cv=5, scoring='accuracy')
+
+# Fit the grid search
+
+grid_search_tc.fit(X_train, y_train)
+
+# Check the best params
+
+best_params_tc = grid_search_tc.best_params_
+
+print('This one are the best params:', best_params_tc)
+
+#%%
+
+# Now create the model with the best params
+
+best_params_tc = {
+    'criterion': 'gini',
+    'max_depth': 10,
+    'max_features': None,
+    'min_samples_leaf': 2,
+    'min_samples_split': 10
+}
+
+optimized_tree_classifier = DecisionTreeClassifier(**best_params_tc, random_state=117)
+
+optimized_tree_classifier.fit(X_train, y_train)
+
+y_pred_otc = optimized_tree_classifier.predict(X_test)
+
+# Check the accuracy
+
+accuracy_tc = accuracy_score(y_test, y_pred_otc)
+print(f'Accuracy with the best params: {accuracy_tc:.2f}')
+
+# Confusion Matrix
+
+print('Confusion Matrix')
+print(confusion_matrix(y_test, y_pred_otc))
+
+# Report
+
+print('Report')
+print(classification_report(y_test, y_pred_otc))
+
+# Save the model trained
+
+joblib.dump(optimized_tree_classifier, 'tree_classifier_model.joblib')
+tree_classifier_model = joblib.load('tree_classifier_model.joblib')
+
+#%%
+
+'''
+Random Forest Classifier
+'''
+
+# Find the best params for the model
+
+from sklearn.ensemble import RandomForestClassifier
+
+rfc_classifier = RandomForestClassifier()
+
+param_grid_rfc = {
+    'n_estimators': [50, 100, 200],
+    'criterion': ['gini', 'entropy'],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'max_features': ['auto', 'sqrt', 'log2'],
+    'bootstrap': [True, False],
+    'random_state': [117]
+}
+
+grid_search_rfc = GridSearchCV(estimator=rfc_classifier, param_grid=param_grid_rfc, cv=5, scoring='accuracy', n_jobs=-1)
+
+grid_search_rfc.fit(X_train, y_train)
+
+print('Best params:', grid_search_rfc.best_estimator_)
+
+#%%
+
+# Now create the model with the best params
+
+best_params_rf = {
+    'n_estimators': 200,
+    'criterion': 'entropy',
+    'max_depth': 10,
+    'min_samples_leaf': 2,
+    'max_features': 'log2',
+    'bootstrap': False,
+    }
+
+optimize_random_forest = RandomForestClassifier(**best_params_rf, random_state=117)
+
+optimize_random_forest.fit(X_train, y_train)
+
+y_pred_rfc = optimize_random_forest.predict(X_test)
+
+# Check the accuracy
+
+accuracy_rfc = accuracy_score(y_test, y_pred_rfc)
+print(f'Accuracy with the best params: {accuracy_rfc:.2f}')
+
+# Confusion Matrix
+
+print('Confusion Matrix')
+print(confusion_matrix(y_test, y_pred_rfc))
+
+# Report
+
+print('Report')
+print(classification_report(y_test, y_pred_rfc))
+
+# save the model trained
+
+joblib.dump(optimize_random_forest, 'random_forest_model.joblib')
+random_forest_model = joblib.load('random_forest_model.joblib')
+
+#%%
+
+'''
+XGBoost Classifier
+'''
+
+from xgboost import XGBClassifier
+from sklearn.model_selection import RandomizedSearchCV
+
+# Define the best params
+
+param_grid_xgb = {
+    'learning_rate': np.linspace(0.01, 0.2, 10),
+    'max_depth': np.arange(0, 15),
+    'n_estimators': np.arange(20, 200, 10),
+    'subsample': np.linspace(0.2, 1, 5),
+    'colsample_bytree': np.linspace(0.5, 1, 6)
+    }
+
+random_search_xgb = RandomizedSearchCV(
+    XGBClassifier(), 
+    param_distributions = param_grid_xgb,
+    n_iter = 50, # The number of random iterations
+    scoring = 'accuracy',
+    cv=5,
+    verbose=1,
+    n_jobs=-1,
+    random_state=117)
+
+random_search_xgb.fit(X_train, y_train)
+
+print('The best params: ')
+print(random_search_xgb.best_params_)
+
+#%%
+
+# Now create the model with the best params
+
+
+optimized_xgb = XGBClassifier(
+    learning_rate = 0.16,
+    max_depth = 3,
+    n_estimators = 90,
+    subsample = 0.6,
+    colsample_bytree = 0.8
+    )
+
+optimized_xgb.fit(X_train, y_train)
+
+y_pred_xgb = optimized_xgb.predict(X_test)
+
+# Check the accuracy
+
+accuracy_xgb = accuracy_score(y_test, y_pred_xgb)
+print(f'Accuracy with the best params: {accuracy_xgb:.2f}')
+
+# Confusion Matrix
+
+print('Confusion Matrix')
+print(confusion_matrix(y_test, y_pred_xgb))
+
+# Report
+
+print('Report')
+print(classification_report(y_test, y_pred_xgb))
+
+# Save the model trained
+
+joblib.dump(optimized_xgb, 'xgb_model.joblib')
+xgb_model = joblib.load('xgb_model.joblib')
+
+#%%
+
+'''
+K-Nearest Neighbors (KNN)
+'''
+from sklearn.neighbors import KNeighborsClassifier
+
+param_grid_knn = {
+    'n_neighbors': np.arange(1, 21),
+    'weights': ['uniform', 'distance'],
+    'p':[1,2]
+    }
+
+grid_search_xgb = GridSearchCV(
+    KNeighborsClassifier(),
+    param_grid = param_grid_knn,
+    scoring = 'accuracy',
+    cv = 5,
+    verbose = 1,
+    n_jobs = -1)
+
+grid_search_xgb.fit(X_train, y_train)
+
+# Check the best params
+
+print("Mejores parámetros encontrados:")
+print(grid_search_xgb.best_params_)
+
+#%%
+
+optimized_knn = KNeighborsClassifier(
+    n_neighbors = 7,
+    p = 1,
+    weights = 'uniform')
+
+optimized_knn.fit(X_train, y_train)
+
+y_pred_knn = optimized_knn.predict(X_test)
+
+# Check the accuracy
+
+accuracy_knn = accuracy_score(y_test, y_pred_knn)
+print(f'Accuracy with the best params: {accuracy_knn:.2f}')
+
+# Confusion Matrix
+
+print('Confusion Matrix')
+print(confusion_matrix(y_test, y_pred_knn))
+
+# Report
+
+print('Report')
+print(classification_report(y_test, y_pred_knn))
+
+# Save the model trained
+
+joblib.dump(optimized_knn, 'knn_model.joblib')
+knn_model = joblib.load('knn_model.joblib')
+
+#%%
+
+'''
+GaussianProcessClassifier
+'''
+
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+
+param_grid_gpc = {
+    'kernel': [1.0 * RBF(length_scale=l) for l in [0.1, 2, 10]],
+    'optimizer': ['fmin_l_bfgs_b', 'fmin_tnc', 'fmin_cg', 'fmin_powell', 'fmin_ncg', 'fmin_cobyla']
+    }
+
+grid_search_gpc = GridSearchCV(
+    GaussianProcessClassifier(),
+    param_grid = param_grid_gpc,
+    scoring = 'accuracy',
+    cv = 5,
+    verbose = 1,
+    n_jobs = -1)
+
+grid_search_gpc.fit(X_train, y_train)
+
+# Check the best params
+
+print('Best params')
+print(grid_search_gpc.best_params_)
+
+#%%
+
+# Create the model with the best params
+
+optimized_gpc = GaussianProcessClassifier(
+    kernel = 1**2 * RBF(length_scale=2),
+    optimizer = 'fmin_l_bfgs_b')
+
+optimized_gpc.fit(X_train, y_train)
+
+y_pred_gpc = optimized_gpc.predict(X_test)
+
+# Check the accuracy
+
+accuracy_gpc = accuracy_score(y_test, y_pred_gpc)
+print(f'Accuracy with the best params: {accuracy_gpc:.2f}')
+
+# Confusion Matrix
+
+print('Confusion Matrix')
+print(confusion_matrix(y_test, y_pred_gpc))
+
+# Report
+
+print('Report')
+print(classification_report(y_test, y_pred_gpc))
+
+# Save the model trained
+
+joblib.dump(optimized_gpc, 'gpc_model.joblib')
+gpc_model = joblib.load('gpc_model.joblib')
+
+#%%
+
+'''
+GaussianNB (Naive Bayes)
+'''
+
+from sklearn.naive_bayes import GaussianNB
+
+naive_bayes = GaussianNB()
+
+naive_bayes.fit(X_train, y_train)
+
+y_pred_nb = naive_bayes.predict(X_test)
+
+# Check the accuracy
+
+accuracy_nb = accuracy_score(y_test, y_pred_nb)
+
+print(f'The accuracy is: {accuracy_nb:.2f}')
+
+# Report
+
+print(classification_report(y_test, y_pred_nb))
+
+# Save the model trained
+
+joblib.dump(naive_bayes, 'naive_bayes_model.joblib')
+naive_bayes_model = joblib.load('naive_bayes_model.joblib')
+
+#%%
+
+'''
+Create a ROC for every model
+'''
+from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score
+
+
+#%%
+
+# SVC ROC
+
+from scipy.special import expit
+
+decision_scores = svc_classifier.decision_function(X_test)
+
+y_score_svc = expit(decision_scores)
+
+fpr, tpr, _ = roc_curve(y_test, y_score_svc)
+roc_auc = auc(fpr, tpr)
+
+# Plot the ROC curve
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, label=f'SVC (AUC = {roc_auc:.2f})')
+
+# Plot the diagonal line for random guessing
+plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Random', alpha=0.5)
+
+# Set the labels and title
+plt.title('ROC Curve')
+plt.xlabel('False Positive Rate (FPR)')
+plt.ylabel('True Positive Rate (TPR)')
+plt.legend()
+plt.show()
+
+#%%
+
+# Decision Tree Classifier ROC
+
+y_prob_tree = optimized_tree_classifier.predict_proba(X_test)[:, 1]
+
+fpr_tree, tpr_tree, thresholds_tree = roc_curve(y_test, y_prob_tree)
+
+roc_auc_tree = auc(fpr_tree, tpr_tree)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr_tree, tpr_tree, color='green', lw=2, label='Decision Tree Classifier (AUC = {:.2f})'.format(roc_auc_tree))
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Aleatorio')
+plt.xlabel('False Positives (FPR)')
+plt.ylabel('True Positives (TPR)')
+plt.title('ROC - Decision Tree')
+plt.legend(loc='lower right')
+plt.show()
+
+#%%
+
+# Random Forest ROC
+
+y_prob_rf = optimize_random_forest.predict_proba(X_test)[:, 1]
+
+fpr_rf, tpr_rf, thresholds_rf = roc_curve(y_test, y_prob_rf)
+
+roc_auc_rf = auc(fpr_rf, tpr_rf)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr_rf, tpr_rf, color='green', lw=2, label='Random Forest Classifier (AUC = {:.2f})'.format(roc_auc_rf))
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
+plt.xlabel('False Positives (FPR)')
+plt.ylabel('True Positives (TPR)')
+plt.title('ROC -  Random Forest Classifier')
+plt.legend(loc='lower right')
+plt.show()
+
+
+#%%
+
+# XGB ROC
+
+y_prob_xgb = optimized_xgb.predict_proba(X_test)[:, 1]
+
+fpr_xgb, tpr_xgb, thresholds_xgb = roc_curve(y_test, y_prob_xgb)
+
+roc_auc_xgb = auc(fpr_xgb, tpr_xgb)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr_xgb, tpr_xgb, color='green', lw=2, label='XGB Classifier (AUC = {:.2f})'.format(roc_auc_xgb))
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
+plt.xlabel('False Positives (FPR)')
+plt.ylabel('True Positives (TPR)')
+plt.title('ROC -  XGB Classifier')
+plt.legend(loc='lower right')
+plt.show()
+#%%
+
+# KNN ROC
+
+y_prob_knn = optimized_knn.predict_proba(X_test)[:, 1]
+
+fpr_knn, tpr_knn, thresholds_knn = roc_curve(y_test, y_prob_knn)
+
+roc_auc_knn = auc(fpr_knn, tpr_knn)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr_knn, tpr_knn, color='green', lw=2, label='Knn Classifier (AUC = {:.2f}'.format(roc_auc_knn))
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
+plt.xlabel('False Positives')
+plt.ylabel('True Positives')
+plt.title('ROC Curve - KNN')
+plt.legend(loc='lower right')
+plt.show()
+
+#%% GPC ROC
+
+y_prob_gpc = optimized_gpc.predict_proba(X_test)[:, 1]
+
+fpr_gpc, tpr_gpc, thresholds_gpc = roc_curve(y_test, y_prob_gpc)
+
+roc_auc_gpc = auc(fpr_gpc, tpr_gpc)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr_gpc, tpr_gpc, color='green', lw=2, label='GPC Classifier (AUC = {:.2f}'.format(roc_auc_gpc))
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
+plt.xlabel('False Positives')
+plt.ylabel('True Positives')
+plt.title('ROC Curve - GPC')
+plt.legend(loc='lower right')
+plt.show()
+
+
+#%%
+
+# Naive Bayes ROC
+
+y_prob_nb = naive_bayes.predict_proba(X_test)[:, 1]
+
+fpr_nb, tpr_nb, thresholds_nb = roc_curve(y_test, y_prob_nb)
+
+roc_auc_nb = auc(fpr_nb, tpr_nb)
+
+plt.figure(figsize=(8, 8))
+plt.plot(fpr_nb, tpr_nb, color='green', lw=2, label='Naive Bayes Classifir (AUC = {:.2f}'.format(roc_auc_nb))
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
+plt.xlabel('False Positives')
+plt.ylabel('True Positives')
+plt.title('ROC Curve - Naive Bayes')
+plt.legend(loc='lower right')
+plt.show()
+
+#%%
+
+# We can compare the metrics between the models
+
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1]
+
+    accuracy = accuracy_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, y_prob)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+
+    return {'Accuracy': accuracy, 'AUC-ROC': roc_auc, 'Precision': precision, 'Recall': recall, 'F1-Score': f1}
+
+# Supongamos que ya tienes tus modelos definidos y entrenados
+models = [
+    (svc_model, 'SVC Model'),
+    (random_forest_model, 'Random Forest Model'),
+    (tree_classifier_model, 'Decision Tree Model'),
+    (xgb_model,'XGB Model'),
+    (knn_model, 'KNN Model'),
+    (gpc_model, 'GPC Model'),
+    (naive_bayes_model, 'Naive Bayes Model')
+]
+
+results = {}
+for model, label in models:
+    results[label] = evaluate_model(model, X_test, y_test)
+
+
+# Convierte los resultados a un DataFrame para visualización
+df_results = pd.DataFrame(results).T
+
+# Visualiza las métricas con un gráfico de barras
+plt.figure(figsize=(10, 6))
+sns.barplot(x=df_results.index, y='AUC-ROC', data=df_results)
+plt.xticks(rotation=45, ha='right')
+plt.title('Comparative the AUC-ROC between the models')
+plt.show()
